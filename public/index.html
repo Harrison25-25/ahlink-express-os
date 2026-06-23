@@ -35,6 +35,7 @@
       <button class="nav-item" data-view="destination">Destination</button>
       <button class="nav-item" data-view="exceptions">Exceptions</button>
       <button class="nav-item" data-view="finance">Finance</button>
+      <button class="nav-item" data-view="accounts">Customer accounts</button>
       <button class="nav-item" data-view="notifications">Notifications & print</button>
       <button class="nav-item" data-view="admin">Admin settings</button>
       <button class="nav-item" data-view="audit">Audit trail</button>
@@ -61,6 +62,7 @@
         <button class="quick-action" data-go="pickup"><span>Pickup dispatch</span><small>Assign riders and receive pickups at office</small></button>
         <button class="quick-action" data-go="notifications"><span>Print / QR labels</span><small>Package labels, receipts and manifests</small></button>
         <button class="quick-action" data-go="finance"><span>Cashier closing</span><small>Shift sessions, payment totals and reports</small></button>
+        <button class="quick-action" data-go="accounts"><span>Customer accounts</span><small>Business billing, balances and statements</small></button>
         <button class="quick-action" data-go="admin"><span>Staff & offices</span><small>Users, roles, PIN resets, routes and settings</small></button>
       </div>
       <div class="metric-grid">
@@ -86,6 +88,7 @@
             <label>Destination office<select name="destination" required></select></label>
             <label>How will AHLink receive it?<select name="receivingMethod"><option value="DROPOFF">Customer drops at office</option><option value="PICKUP">Request pickup</option></select></label>
             <label>Service<select name="service"><option value="STANDARD">Standard</option><option value="EXPRESS">Express</option></select></label>
+            <label>Customer account<select name="customerAccountId" id="booking-account"><option value="">Walk-in customer / no account</option></select></label>
             <label class="full pickup-field hidden">Pickup address<input name="pickupAddress"></label>
             <label class="full">Item description<textarea name="itemDescription" required placeholder="Example: sealed box containing clothing"></textarea></label>
             <label>Approximate weight (kg)<input name="approximateWeightKg" type="number" min="0.1" max="100" step="0.1" value="1" required></label>
@@ -120,6 +123,7 @@
             <label>Height (cm)<input name="heightCm" type="number" min="1" max="300" required></label>
             <label>Seal number<input name="sealNumber" placeholder="Optional"></label>
             <label>Payment arrangement<select name="paymentArrangement"><option value="SENDER_PAID">Sender paid</option><option value="RECIPIENT_PAYS">Recipient pays</option><option value="ACCOUNT">Business account</option></select></label>
+            <label>Business account<select name="customerAccountId" id="acceptance-account"><option value="">Only required for account billing</option></select></label>
             <label>Accepted by<input name="acceptedBy" required></label>
           </div>
           <button class="primary full-button" type="submit">Verify and accept into custody</button>
@@ -174,6 +178,10 @@
 
     <section id="finance" class="view">
       <div class="panel"><div class="panel-heading"><div><p class="eyebrow">FINANCE</p><h2>Payments and daily cashier report</h2></div></div><div id="finance-summary"></div><div id="finance-workbench"></div></div>
+    </section>
+
+    <section id="accounts" class="view">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">CUSTOMER & ACCOUNT BILLING</p><h2>Business accounts, balances and statements</h2></div></div><div id="accounts-workbench"></div></div>
     </section>
 
     <section id="notifications" class="view">

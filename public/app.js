@@ -1,4 +1,4 @@
-const state = { offices: [], officeSettings: [], routeSettings: [], roles: [], users: [], riders: [], bookings: [], pickupTasks: [], packages: [], vehicles: [], trips: [], manifests: [], collections: [], exceptions: [], payments: [], cashierShifts: [], cashClosings: [], auditLogs: [], finance: {}, dashboard: {} };
+const state = { offices: [], companySettings: {}, officeSettings: [], routeSettings: [], roles: [], users: [], riders: [], customerAccounts: [], bookings: [], pickupTasks: [], packages: [], vehicles: [], trips: [], manifests: [], collections: [], exceptions: [], payments: [], cashierShifts: [], cashClosings: [], auditLogs: [], finance: {}, dashboard: {} };
 let sessionToken = localStorage.getItem("ahe_session_token") || "";
 let session = JSON.parse(localStorage.getItem("ahe_session") || "null");
 let officeFilter = localStorage.getItem("ahe_office_filter") || "";
@@ -25,6 +25,7 @@ async function refresh() {
   renderDestinationOps();
   renderExceptions();
   renderFinance();
+  renderAccounts();
   renderNotifications();
   renderAdmin();
   renderAudit();
@@ -102,7 +103,7 @@ function bindNavigation() {
 function showView(id) {
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === id));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === id));
-  const titles = { dashboard: "Operations overview", bookings: "Register a booking", pickup: "Pickup dispatch", acceptance: "Physical package acceptance", inventory: "Package inventory", trips: "Trips and manifest control", destination: "Destination reception and collection", exceptions: "Exception control", finance: "Finance and cashier report", notifications: "Notifications and print", admin: "Admin settings", audit: "Audit trail", tracking: "Package tracking" };
+  const titles = { dashboard: "Operations overview", bookings: "Register a booking", pickup: "Pickup dispatch", acceptance: "Physical package acceptance", inventory: "Package inventory", trips: "Trips and manifest control", destination: "Destination reception and collection", exceptions: "Exception control", finance: "Finance and cashier report", accounts: "Customer accounts", notifications: "Notifications and print", admin: "Admin settings", audit: "Audit trail", tracking: "Package tracking" };
   document.querySelector("#page-title").textContent = titles[id];
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -183,6 +184,10 @@ function populateOffices() {
     if (select.options.length) return;
     select.innerHTML = state.offices.map((office) => `<option value="${office.code}" ${select.name === "destination" && office.code === "DLA" ? "selected" : ""}>${office.name}</option>`).join("");
   });
+  const accountOptions = `<option value="">Walk-in customer / no account</option>${(state.customerAccounts || []).filter((account) => account.status !== "BLOCKED").map((account) => `<option value="${account.accountId}">${escapeHtml(account.accountName)} · ${escapeHtml(account.accountCode)}</option>`).join("")}`;
+  document.querySelectorAll("#booking-account, #acceptance-account").forEach((select) => {
+    if (select) select.innerHTML = accountOptions;
+  });
 }
 
 function renderDashboard() {
@@ -221,6 +226,22 @@ function renderPickupDispatch() {
       toast("Rider dispatched.");
     } catch (error) { toast(error.message, true); }
   }));
+  document.querySelectorAll(".pickup-on-way-form").forEach((form) => form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/pickups/${form.dataset.pickupId}/on-way`, { method: "POST", body: formJson(form) });
+      await refresh();
+      toast("Rider marked on the way.");
+    } catch (error) { toast(error.message, true); }
+  }));
+  document.querySelectorAll(".pickup-exception-form").forEach((form) => form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/pickups/${form.dataset.pickupId}/exception`, { method: "POST", body: formJson(form) });
+      await refresh();
+      toast("Pickup exception recorded.");
+    } catch (error) { toast(error.message, true); }
+  }));
   document.querySelectorAll(".pickup-collected-form").forEach((form) => form.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -243,8 +264,10 @@ function pickupAction(task, riderOptions) {
   if (task.status === "REQUESTED") {
     return `<form class="pickup-assign-form inline-form" data-pickup-id="${task.pickupTaskId}"><select name="riderUserId" required>${riderOptions || '<option value="">Create an active rider first</option>'}</select><button ${riderOptions ? "" : "disabled"}>Assign rider</button></form>`;
   }
-  if (task.status === "ASSIGNED") return `<button data-dispatch-pickup="${task.pickupTaskId}">Dispatch rider</button>`;
-  if (task.status === "DISPATCHED") return `<form class="pickup-collected-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="pickupProofNote" placeholder="Sender handover proof note" required><button>Confirm picked up</button></form>`;
+  if (task.status === "ASSIGNED") return `<button data-dispatch-pickup="${task.pickupTaskId}">Dispatch rider</button><form class="pickup-exception-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="reason" placeholder="Reschedule/fail note" required><select name="outcome"><option value="RESCHEDULED">Reschedule</option><option value="FAILED">Failed</option></select><button>Save</button></form>`;
+  if (task.status === "DISPATCHED" || task.status === "RESCHEDULED") return `<form class="pickup-on-way-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="riderLocationNote" placeholder="Rider location / ETA"><button>On the way</button></form><form class="pickup-exception-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="reason" placeholder="Reschedule/fail note" required><select name="outcome"><option value="RESCHEDULED">Reschedule</option><option value="FAILED">Failed</option></select><button>Save</button></form>`;
+  if (task.status === "ON_THE_WAY") return `<form class="pickup-collected-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="pickupProofNote" placeholder="Sender handover proof note" required><button>Confirm picked up</button></form><form class="pickup-exception-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="reason" placeholder="Failed pickup note" required><select name="outcome"><option value="FAILED">Failed</option><option value="RESCHEDULED">Reschedule</option></select><button>Save</button></form>`;
+  if (task.status === "FAILED") return `<form class="pickup-exception-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="reason" placeholder="New schedule note" required><input name="rescheduledFor" type="datetime-local"><select name="outcome"><option value="RESCHEDULED">Reschedule</option></select><button>Reschedule</button></form>`;
   if (task.status === "PICKED_UP") return `<form class="pickup-arrive-form inline-form" data-pickup-id="${task.pickupTaskId}"><input name="officeArrivalNote" placeholder="Office receiver note"><button>Receive at office</button></form>`;
   if (task.status === "ARRIVED_AT_OFFICE") return "Ready for physical acceptance";
   return "—";
@@ -483,6 +506,78 @@ function renderFinance() {
   }));
 }
 
+function renderAccounts() {
+  const target = document.querySelector("#accounts-workbench");
+  if (!target) return;
+  const balances = (state.finance && state.finance.accountBalances) || [];
+  target.innerHTML = `<div class="two-panel-grid">
+    <form id="account-form" class="sub-panel">
+      <h3>Create / edit customer account</h3>
+      <input name="accountId" type="hidden">
+      <label>Account code<input name="accountCode" placeholder="BIZ-001"></label>
+      <label>Account name<input name="accountName" required placeholder="Business or customer name"></label>
+      <label>Contact person<input name="contactName" required placeholder="Manager / owner"></label>
+      <label>Phone<input name="phone" required></label>
+      <label>Type<select name="accountType"><option value="BUSINESS">Business</option><option value="INDIVIDUAL">Individual</option></select></label>
+      <label>Credit limit FCFA<input name="creditLimitCfa" type="number" min="0" value="0"></label>
+      <label>Status<select name="status"><option value="ACTIVE">Active</option><option value="BLOCKED">Blocked</option></select></label>
+      <label>Note<input name="note" placeholder="Optional billing note"></label>
+      <button class="primary full-button">Save account</button>
+    </form>
+    <div class="sub-panel">
+      <h3>Account balance controls</h3>
+      <p>Use account billing when accepting packages, then receive account payments here. Statements can be printed for business customers.</p>
+      <div class="pill-list">${balances.map((row) => `<span>${escapeHtml(row.accountName)}: <strong>${money(row.outstandingCfa)}</strong></span>`).join("") || "No account balances yet."}</div>
+    </div>
+  </div>
+  <h3>Customer / business accounts</h3>
+  <div class="table-wrap"><table><thead><tr><th>Account</th><th>Contact</th><th>Credit</th><th>Outstanding</th><th>Status</th><th>Actions</th></tr></thead><tbody>${(state.customerAccounts || []).map((account) => {
+    const balance = balances.find((row) => row.accountId === account.accountId) || {};
+    return `<tr>
+      <td><strong>${escapeHtml(account.accountName)}</strong><br><small>${escapeHtml(account.accountCode)} · ${label(account.accountType)}</small></td>
+      <td>${escapeHtml(account.contactName)}<br><small>${escapeHtml(account.phone)}</small></td>
+      <td>${money(account.creditLimitCfa)}<br><small>Available: ${money(balance.availableCreditCfa)}</small></td>
+      <td>${money(balance.outstandingCfa)}</td>
+      <td><span class="badge ${account.status === "ACTIVE" ? "green" : "orange"}">${label(account.status)}</span></td>
+      <td><button data-edit-account="${account.accountId}">Edit</button><button data-print-statement="${account.accountId}">Print statement</button><form class="account-payment-form inline-form" data-account-id="${account.accountId}"><input name="amountCfa" type="number" min="1" placeholder="Amount" required><select name="mode"><option value="CASH">Cash</option><option value="MOMO">MoMo</option><option value="BANK">Bank</option></select><button>Receive</button></form></td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="6">No customer accounts yet.</td></tr>'}</tbody></table></div>`;
+
+  document.querySelector("#account-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api("/api/customers", { method: "POST", body: formJson(event.currentTarget) });
+      event.currentTarget.reset();
+      await refresh();
+      toast("Customer account saved.");
+    } catch (error) { toast(error.message, true); }
+  });
+  document.querySelectorAll("[data-edit-account]").forEach((button) => button.addEventListener("click", () => {
+    const account = state.customerAccounts.find((row) => row.accountId === button.dataset.editAccount);
+    const form = document.querySelector("#account-form");
+    if (!account || !form) return;
+    form.accountId.value = account.accountId;
+    form.accountCode.value = account.accountCode;
+    form.accountName.value = account.accountName;
+    form.contactName.value = account.contactName;
+    form.phone.value = account.phone;
+    form.accountType.value = account.accountType;
+    form.creditLimitCfa.value = account.creditLimitCfa || 0;
+    form.status.value = account.status || "ACTIVE";
+    form.note.value = account.note || "";
+    showView("accounts");
+  }));
+  document.querySelectorAll("[data-print-statement]").forEach((button) => button.addEventListener("click", () => printAccountStatement(button.dataset.printStatement)));
+  document.querySelectorAll(".account-payment-form").forEach((form) => form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/customers/${encodeURIComponent(form.dataset.accountId)}/payments`, { method: "POST", body: formJson(form) });
+      await refresh();
+      toast("Account payment recorded.");
+    } catch (error) { toast(error.message, true); }
+  }));
+}
+
 function renderNotifications() {
   const target = document.querySelector("#notification-workbench");
   if (!target) return;
@@ -547,6 +642,15 @@ function printCashierReport() {
   openPrint("Daily cashier report", `<h1>AHLink Express Daily Cashier Report</h1><p><b>Date:</b> ${escapeHtml(finance.date || new Date().toISOString().slice(0, 10))}</p><table><tbody><tr><th>Total collected</th><td>${money(finance.totalCollectedCfa)}</td></tr><tr><th>Payment count</th><td>${Number(finance.paymentCount || 0)}</td></tr><tr><th>Outstanding</th><td>${money(finance.outstandingCfa)}</td></tr><tr><th>Cash</th><td>${money((finance.byMode || {}).CASH)}</td></tr><tr><th>MoMo</th><td>${money((finance.byMode || {}).MOMO)}</td></tr><tr><th>Account</th><td>${money((finance.byMode || {}).ACCOUNT)}</td></tr></tbody></table><h2>Cash closings</h2><table><thead><tr><th>Cashier</th><th>Expected</th><th>Counted</th><th>Variance</th></tr></thead><tbody>${(state.cashClosings || []).map((row) => `<tr><td>${escapeHtml(row.cashierName)}</td><td>${money(row.expectedCashCfa)}</td><td>${money(row.countedCashCfa)}</td><td>${money(row.varianceCfa)}</td></tr>`).join("") || '<tr><td colspan="4">No closings.</td></tr>'}</tbody></table>`);
 }
 
+function printAccountStatement(accountId) {
+  const account = state.customerAccounts.find((row) => row.accountId === accountId);
+  if (!account) return;
+  const packages = state.packages.filter((item) => item.customerAccountId === accountId);
+  const payments = state.payments.filter((item) => item.accountId === accountId);
+  const balance = ((state.finance || {}).accountBalances || []).find((row) => row.accountId === accountId) || {};
+  openPrint(`Statement ${account.accountCode}`, `<h1>AHLink Express Account Statement</h1><p><b>${escapeHtml(account.accountName)}</b> · ${escapeHtml(account.accountCode)} · ${escapeHtml(account.phone)}</p><p><b>Outstanding:</b> ${money(balance.outstandingCfa)} · <b>Credit limit:</b> ${money(account.creditLimitCfa)}</p><h2>Account-billed packages</h2><table><thead><tr><th>Tracking</th><th>Route</th><th>Status</th><th>Charge</th><th>Paid</th></tr></thead><tbody>${packages.map((item) => `<tr><td>${escapeHtml(item.trackingNumber)}</td><td>${item.origin} → ${item.destination}</td><td>${label(item.status)}</td><td>${money(item.finalPriceCfa)}</td><td>${money(item.paidCfa)}</td></tr>`).join("") || '<tr><td colspan="5">No account packages.</td></tr>'}</tbody></table><h2>Account payments</h2><table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Received by</th></tr></thead><tbody>${payments.map((payment) => `<tr><td>${formatDate(payment.paidAt)}</td><td>${money(payment.amountCfa)}</td><td>${label(payment.mode)}</td><td>${escapeHtml(payment.receivedBy)}</td></tr>`).join("") || '<tr><td colspan="4">No account payments.</td></tr>'}</tbody></table>`);
+}
+
 function renderAdmin() {
   const target = document.querySelector("#admin-workbench");
   if (!target) return;
@@ -581,12 +685,22 @@ function renderAdmin() {
       <label>Status<select name="isActive"><option value="true">Active</option><option value="false">Inactive</option></select></label>
       <button class="primary full-button">Save route</button>
     </form>
+    <form id="company-form" class="sub-panel">
+      <h3>Basic company settings</h3>
+      <label>Company name<input name="companyName" required value="${escapeHtml((state.companySettings || {}).companyName || "AHLink Express")}"></label>
+      <label>Company phone<input name="phone" value="${escapeHtml((state.companySettings || {}).phone || "")}"></label>
+      <label>Public tracking base URL<input name="trackingBaseUrl" placeholder="https://ahlink-express-os.onrender.com/track" value="${escapeHtml((state.companySettings || {}).trackingBaseUrl || "")}"></label>
+      <label>Receipt footer<input name="receiptFooter" value="${escapeHtml((state.companySettings || {}).receiptFooter || "")}"></label>
+      <button class="primary full-button">Save company settings</button>
+    </form>
+  </div>
+  <div class="two-panel-grid">
     <div class="sub-panel">
       <h3>Staff activity</h3>
       <div class="table-wrap"><table><thead><tr><th>Time</th><th>Action</th><th>Actor</th></tr></thead><tbody>${(state.auditLogs || []).slice(0, 8).map((row) => `<tr><td>${formatDate(row.createdAt)}</td><td>${label(row.action)}</td><td>${escapeHtml(row.actorName)}</td></tr>`).join("") || '<tr><td colspan="3">No activity yet.</td></tr>'}</tbody></table></div>
     </div>
   </div>
-  <h3>Staff users</h3><div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Office</th><th>Status</th><th>Actions</th></tr></thead><tbody>${(state.users || []).map((user) => `<tr><td><strong>${escapeHtml(user.userId)}</strong><br>${escapeHtml(user.name)}</td><td>${label(user.role)}</td><td>${escapeHtml(user.office)}</td><td><span class="badge ${user.isActive ? "green" : "orange"}">${user.isActive ? "Active" : "Inactive"}</span></td><td><form class="pin-reset-form inline-form" data-user-id="${user.userId}"><input name="pin" placeholder="New PIN" required><button>Reset PIN</button></form><button data-edit-user="${user.userId}">Edit</button><button data-deactivate-user="${user.userId}">Deactivate</button></td></tr>`).join("") || '<tr><td colspan="5">No staff users.</td></tr>'}</tbody></table></div>
+  <h3>Staff users</h3><div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Office</th><th>Status</th><th>Actions</th></tr></thead><tbody>${(state.users || []).map((user) => `<tr><td><strong>${escapeHtml(user.userId)}</strong><br>${escapeHtml(user.name)}</td><td>${label(user.role)}</td><td>${escapeHtml(user.office)}</td><td><span class="badge ${user.isActive ? "green" : "orange"}">${user.isActive ? "Active" : "Inactive"}</span></td><td><form class="pin-reset-form inline-form" data-user-id="${user.userId}"><input name="pin" placeholder="New PIN" required><button>Reset PIN</button></form><button data-edit-user="${user.userId}">Edit</button>${user.isActive ? `<button data-deactivate-user="${user.userId}">Deactivate</button>` : `<button data-reactivate-user="${user.userId}">Reactivate</button>`}</td></tr>`).join("") || '<tr><td colspan="5">No staff users.</td></tr>'}</tbody></table></div>
   <h3>Routes</h3><div class="table-wrap"><table><thead><tr><th>Route</th><th>Name</th><th>Base price</th><th>Status</th><th>Action</th></tr></thead><tbody>${(state.routeSettings || []).map((route) => `<tr><td>${route.origin} → ${route.destination}</td><td>${escapeHtml(route.name)}</td><td>${money(route.basePriceCfa)}</td><td>${route.isActive ? "Active" : "Inactive"}</td><td><button data-edit-route="${route.routeId}">Edit</button></td></tr>`).join("")}</tbody></table></div>`;
 
   document.querySelector("#staff-form")?.addEventListener("submit", async (event) => {
@@ -614,6 +728,14 @@ function renderAdmin() {
       toast("Route saved.");
     } catch (error) { toast(error.message, true); }
   });
+  document.querySelector("#company-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api("/api/admin/company", { method: "POST", body: formJson(event.currentTarget) });
+      await refresh();
+      toast("Company settings saved.");
+    } catch (error) { toast(error.message, true); }
+  });
   document.querySelectorAll(".pin-reset-form").forEach((form) => form.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -627,6 +749,13 @@ function renderAdmin() {
       await api(`/api/admin/users/${encodeURIComponent(button.dataset.deactivateUser)}/deactivate`, { method: "POST" });
       await refresh();
       toast("Staff user deactivated.");
+    } catch (error) { toast(error.message, true); }
+  }));
+  document.querySelectorAll("[data-reactivate-user]").forEach((button) => button.addEventListener("click", async () => {
+    try {
+      await api(`/api/admin/users/${encodeURIComponent(button.dataset.reactivateUser)}/reactivate`, { method: "POST" });
+      await refresh();
+      toast("Staff user reactivated.");
     } catch (error) { toast(error.message, true); }
   }));
   document.querySelectorAll("[data-edit-user]").forEach((button) => button.addEventListener("click", () => {

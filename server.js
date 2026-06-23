@@ -17,6 +17,7 @@ import {
   confirmPickupCollected,
   createBooking,
   createFinanceSummary,
+  createOrUpdateCustomerAccount,
   createOrUpdateOffice,
   createOrUpdateRoute,
   createOrUpdateStaffUser,
@@ -27,8 +28,11 @@ import {
   departTrip,
   dispatchPickupTask,
   ensurePickupTask,
+  failOrReschedulePickup,
+  markPickupOnTheWay,
   markManifestLoaded,
   receiveTripAtDestination,
+  recordAccountPayment,
   recordException,
   recordPayment,
   startCashierShift,
@@ -66,13 +70,13 @@ if (store) {
 }
 
 const ROLE_ACCESS = {
-  ADMIN: ["dashboard", "bookings", "pickup", "acceptance", "inventory", "trips", "destination", "exceptions", "finance", "notifications", "admin", "audit", "tracking"],
+  ADMIN: ["dashboard", "bookings", "pickup", "acceptance", "inventory", "trips", "destination", "exceptions", "finance", "accounts", "notifications", "admin", "audit", "tracking"],
   ORIGIN_OFFICER: ["dashboard", "bookings", "pickup", "acceptance", "inventory", "trips", "notifications", "tracking"],
   DESTINATION_OFFICER: ["dashboard", "inventory", "destination", "exceptions", "notifications", "tracking"],
-  CASHIER: ["dashboard", "finance", "notifications", "tracking"],
+  CASHIER: ["dashboard", "finance", "accounts", "notifications", "tracking"],
   MANIFEST_OFFICER: ["dashboard", "pickup", "inventory", "trips", "notifications", "tracking"],
   RIDER: ["dashboard", "pickup", "tracking"],
-  VIEWER_AUDITOR: ["dashboard", "inventory", "exceptions", "finance", "notifications", "audit", "tracking"]
+  VIEWER_AUDITOR: ["dashboard", "inventory", "exceptions", "finance", "accounts", "notifications", "audit", "tracking"]
 };
 
 export function createServer(dataStore = store) {
@@ -101,10 +105,12 @@ export function createServer(dataStore = store) {
         const filtered = filterDatabaseByOffice(database, office);
         return sendJson(response, 200, {
           offices: database.officeSettings.filter((item) => item.isActive !== false),
+          companySettings: database.companySettings || {},
           session,
           allowedViews: session ? ROLE_ACCESS[session.role] || [] : ["dashboard", "tracking"],
           roles: Object.values(USER_ROLES),
           users: session && session.role === "ADMIN" ? database.users.map(publicUser) : [],
+          customerAccounts: database.customerAccounts || [],
           riders: database.users.filter((user) => user.isActive !== false && user.role === "RIDER").map(publicUser),
           officeSettings: session && session.role === "ADMIN" ? database.officeSettings : database.officeSettings.filter((item) => item.isActive !== false),
           routeSettings: session && session.role === "ADMIN" ? database.routeSettings : database.routeSettings.filter((item) => item.isActive !== false),
@@ -151,6 +157,21 @@ export function createServer(dataStore = store) {
           user.isActive = false;
           user.updatedAt = new Date().toISOString();
           recordAudit(database, request, "STAFF_USER_DEACTIVATED", { userId: user.userId });
+          return publicUser(user);
+        });
+        return sendJson(response, 200, { user: result });
+      }
+
+      const userReactivateMatch = url.pathname.match(/^\/api\/admin\/users\/([^/]+)\/reactivate$/);
+      if (request.method === "POST" && userReactivateMatch) {
+        const result = await dataStore.transaction((database) => {
+          normalizeDatabase(database);
+          requireAdmin(request, database);
+          const user = database.users.find((item) => item.userId === userReactivateMatch[1]);
+          if (!user) throw httpError(404, "Staff user not found.");
+          user.isActive = true;
+          user.updatedAt = new Date().toISOString();
+          recordAudit(database, request, "STAFF_USER_REACTIVATED", { userId: user.userId });
           return publicUser(user);
         });
         return sendJson(response, 200, { user: result });
@@ -203,6 +224,58 @@ export function createServer(dataStore = store) {
         return sendJson(response, 200, { route: result });
       }
 
+      if (request.method === "POST" && url.pathname === "/api/admin/company") {
+        const body = await readJson(request);
+        const result = await dataStore.transaction((database) => {
+          normalizeDatabase(database);
+          requireAdmin(request, database);
+          database.companySettings = {
+            ...(database.companySettings || {}),
+            companyName: String(body.companyName || "AHLink Express").trim(),
+            phone: String(body.phone || "").trim(),
+            receiptFooter: String(body.receiptFooter || "").trim(),
+            trackingBaseUrl: String(body.trackingBaseUrl || "").trim()
+          };
+          recordAudit(database, request, "COMPANY_SETTINGS_UPDATED", { companyName: database.companySettings.companyName });
+          return database.companySettings;
+        });
+        return sendJson(response, 200, { companySettings: result });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/customers") {
+        const body = await readJson(request);
+        const result = await dataStore.transaction((database) => {
+          normalizeDatabase(database);
+          requireAdmin(request, database);
+          const existingIndex = database.customerAccounts.findIndex((account) =>
+            account.accountId === body.accountId || account.accountCode === String(body.accountCode || "").trim().toUpperCase()
+          );
+          const account = createOrUpdateCustomerAccount(existingIndex >= 0 ? database.customerAccounts[existingIndex] : null, body);
+          if (existingIndex >= 0) database.customerAccounts[existingIndex] = account;
+          else database.customerAccounts.push(account);
+          recordAudit(database, request, existingIndex >= 0 ? "CUSTOMER_ACCOUNT_UPDATED" : "CUSTOMER_ACCOUNT_CREATED", { accountId: account.accountId, accountCode: account.accountCode, accountName: account.accountName });
+          return account;
+        });
+        return sendJson(response, 200, { account: result });
+      }
+
+      const accountPaymentMatch = url.pathname.match(/^\/api\/customers\/([^/]+)\/payments$/);
+      if (request.method === "POST" && accountPaymentMatch) {
+        const body = await readJson(request);
+        const result = await dataStore.transaction((database) => {
+          normalizeDatabase(database);
+          const session = sessionFromRequest(request, database);
+          if (!session || !["ADMIN", "CASHIER"].includes(session.role)) throw httpError(403, "Only admin or cashier can record account payments.");
+          const account = database.customerAccounts.find((item) => item.accountId === accountPaymentMatch[1]);
+          if (!account) throw httpError(404, "Customer account not found.");
+          const payment = recordAccountPayment(account, { ...body, receivedBy: actorFromRequest(request, database) });
+          database.payments.push(payment);
+          recordAudit(database, request, "ACCOUNT_PAYMENT_RECORDED", { accountId: account.accountId, accountCode: account.accountCode, amountCfa: payment.amountCfa });
+          return payment;
+        });
+        return sendJson(response, 201, { payment: result });
+      }
+
       if (request.method === "POST" && url.pathname === "/api/bookings") {
         const body = await readJson(request);
         const booking = createBooking(body);
@@ -224,8 +297,14 @@ export function createServer(dataStore = store) {
         const result = await dataStore.transaction((database) => {
           const booking = database.bookings.find((item) => item.bookingId === acceptanceMatch[1]);
           if (!booking) throw httpError(404, "Booking not found.");
+          let customerAccount = null;
+          if (body.paymentArrangement === "ACCOUNT") {
+            customerAccount = database.customerAccounts.find((account) => account.accountId === body.customerAccountId);
+            if (!customerAccount) throw httpError(404, "Select a valid customer/business account for account billing.");
+            if (customerAccount.status === "BLOCKED") throw httpError(409, "This customer account is blocked.");
+          }
           database.meta.packageSequence += 1;
-          const accepted = acceptPhysicalPackage(booking, body, database.meta.packageSequence);
+          const accepted = acceptPhysicalPackage(booking, { ...body, customerAccountId: customerAccount?.accountId || "", accountName: customerAccount?.accountName || "" }, database.meta.packageSequence);
           database.packages.push(accepted.parcelPackage);
           database.events.push(accepted.event);
           booking.status = BOOKING_STATUSES.ACCEPTED;
@@ -274,6 +353,40 @@ export function createServer(dataStore = store) {
           updateBookingForPickup(database, dispatched.bookingId, { status: "PICKUP_DISPATCHED" });
           recordAudit(database, request, "PICKUP_RIDER_DISPATCHED", { pickupTaskId: dispatched.pickupTaskId, riderName: dispatched.riderName, bookingCode: dispatched.bookingCode });
           return dispatched;
+        });
+        return sendJson(response, 200, { pickupTask: result });
+      }
+
+      const pickupOnWayMatch = url.pathname.match(/^\/api\/pickups\/([^/]+)\/on-way$/);
+      if (request.method === "POST" && pickupOnWayMatch) {
+        const body = await readJson(request);
+        const result = await dataStore.transaction((database) => {
+          normalizeDatabase(database);
+          requirePickupOperator(request, database);
+          const pickupIndex = database.pickupTasks.findIndex((item) => item.pickupTaskId === pickupOnWayMatch[1]);
+          if (pickupIndex < 0) throw httpError(404, "Pickup task not found.");
+          const onWay = markPickupOnTheWay(database.pickupTasks[pickupIndex], body);
+          database.pickupTasks[pickupIndex] = onWay;
+          updateBookingForPickup(database, onWay.bookingId, { status: "PICKUP_DISPATCHED" });
+          recordAudit(database, request, "PICKUP_RIDER_ON_THE_WAY", { pickupTaskId: onWay.pickupTaskId, riderName: onWay.riderName, bookingCode: onWay.bookingCode });
+          return onWay;
+        });
+        return sendJson(response, 200, { pickupTask: result });
+      }
+
+      const pickupExceptionMatch = url.pathname.match(/^\/api\/pickups\/([^/]+)\/exception$/);
+      if (request.method === "POST" && pickupExceptionMatch) {
+        const body = await readJson(request);
+        const result = await dataStore.transaction((database) => {
+          normalizeDatabase(database);
+          requirePickupOperator(request, database);
+          const pickupIndex = database.pickupTasks.findIndex((item) => item.pickupTaskId === pickupExceptionMatch[1]);
+          if (pickupIndex < 0) throw httpError(404, "Pickup task not found.");
+          const updated = failOrReschedulePickup(database.pickupTasks[pickupIndex], body);
+          database.pickupTasks[pickupIndex] = updated;
+          updateBookingForPickup(database, updated.bookingId, { status: "PICKUP_REQUESTED" });
+          recordAudit(database, request, `PICKUP_${updated.status}`, { pickupTaskId: updated.pickupTaskId, bookingCode: updated.bookingCode, reason: updated.failureReason });
+          return updated;
         });
         return sendJson(response, 200, { pickupTask: result });
       }
@@ -337,6 +450,37 @@ export function createServer(dataStore = store) {
           .filter((event) => event.packageId === parcelPackage.packageId)
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         return sendJson(response, 200, { package: parcelPackage, events });
+      }
+
+      const publicTrackingMatch = url.pathname.match(/^\/api\/public\/tracking\/([^/]+)$/);
+      if (request.method === "GET" && publicTrackingMatch) {
+        const trackingNumber = parseScanCode(decodeURIComponent(publicTrackingMatch[1]));
+        const database = normalizeDatabase(await dataStore.read());
+        const parcelPackage = database.packages.find((item) => item.trackingNumber === trackingNumber);
+        if (!parcelPackage) throw httpError(404, "Tracking number not found.");
+        const events = database.events
+          .filter((event) => event.packageId === parcelPackage.packageId)
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          .map((event) => ({
+            type: event.type,
+            status: event.newStatus,
+            office: event.office,
+            note: publicEventNote(event),
+            createdAt: event.createdAt
+          }));
+        return sendJson(response, 200, {
+          package: {
+            trackingNumber: parcelPackage.trackingNumber,
+            origin: parcelPackage.origin,
+            destination: parcelPackage.destination,
+            recipientName: parcelPackage.recipientName,
+            status: parcelPackage.status,
+            currentOffice: parcelPackage.currentOffice,
+            pickupReady: ["ARRIVED_AT_DESTINATION", "STORED_AT_DESTINATION"].includes(parcelPackage.status),
+            collectedAt: parcelPackage.collectedAt || null
+          },
+          events
+        });
       }
 
       const qrMatch = url.pathname.match(/^\/api\/packages\/([^/]+)\/qr\.svg$/);
@@ -721,6 +865,12 @@ function createDashboard(database) {
 
 function normalizeDatabase(database) {
   database.meta ||= { packageSequence: 0 };
+  database.companySettings ||= {
+    companyName: "AHLink Express",
+    phone: "",
+    receiptFooter: "Thank you for using AHLink Express.",
+    trackingBaseUrl: ""
+  };
   database.officeSettings ||= OFFICES.map((office) => ({ ...office, isActive: true }));
   database.routeSettings ||= [
     { routeId: "BUE-LIM", origin: "BUE", destination: "LIM", name: "Buea to Limbe", basePriceCfa: 1500, isActive: true },
@@ -746,6 +896,7 @@ function normalizeDatabase(database) {
     database.users.push({ userId: "rider", name: "Pickup Rider", role: "RIDER", office: "BUE", pin: "1234", isActive: true });
   }
   database.bookings ||= [];
+  database.customerAccounts ||= [];
   database.pickupTasks ||= [];
   database.packages ||= [];
   database.vehicles ||= [];
@@ -759,6 +910,18 @@ function normalizeDatabase(database) {
   database.events ||= [];
   database.auditLogs ||= [];
   return database;
+}
+
+function publicEventNote(event) {
+  const type = String(event.type || "");
+  if (type.includes("ACCEPTED")) return "Package accepted into AHLink Express custody.";
+  if (type.includes("STORED")) return "Package stored safely at an AHLink office.";
+  if (type.includes("LOADED")) return "Package loaded for transport.";
+  if (type.includes("DEPARTED")) return "Package departed origin office.";
+  if (type.includes("ARRIVED")) return "Package arrived at destination office.";
+  if (type.includes("COLLECTED")) return "Package collected by receiver.";
+  if (type.includes("EXCEPTION")) return "AHLink recorded an exception and will follow up.";
+  return event.note || "Tracking update recorded.";
 }
 
 function cryptoToken() {
@@ -919,7 +1082,7 @@ async function readJson(request) {
 }
 
 function serveStatic(pathname, response) {
-  const requested = pathname === "/" ? "/index.html" : pathname;
+  const requested = pathname === "/" ? "/index.html" : pathname === "/track" ? "/track.html" : pathname;
   const filePath = path.resolve(publicDirectory, `.${requested}`);
   if (!filePath.startsWith(publicDirectory) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
     throw httpError(404, "Page not found.");

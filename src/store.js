@@ -3,6 +3,12 @@ import path from "node:path";
 
 const EMPTY_DATABASE = {
   meta: { packageSequence: 0 },
+  companySettings: {
+    companyName: "AHLink Express",
+    phone: "",
+    receiptFooter: "Thank you for using AHLink Express.",
+    trackingBaseUrl: ""
+  },
   officeSettings: [
     { code: "BUE", name: "Buea", isActive: true },
     { code: "LIM", name: "Limbe", isActive: true },
@@ -25,6 +31,7 @@ const EMPTY_DATABASE = {
     { userId: "rider", name: "Pickup Rider", role: "RIDER", office: "BUE", pin: "1234", isActive: true },
     { userId: "auditor", name: "Viewer Auditor", role: "VIEWER_AUDITOR", office: "BUE", pin: "1234", isActive: true }
   ],
+  customerAccounts: [],
   bookings: [],
   pickupTasks: [],
   packages: [],
@@ -46,6 +53,7 @@ export function createEmptyDatabase() {
 
 export function ensureDatabaseShape(database) {
   database.meta ||= { packageSequence: 0 };
+  database.companySettings ||= createEmptyDatabase().companySettings;
   database.officeSettings ||= createEmptyDatabase().officeSettings;
   database.routeSettings ||= createEmptyDatabase().routeSettings;
   database.users ||= [];
@@ -54,6 +62,7 @@ export function ensureDatabaseShape(database) {
     database.users.push({ userId: "rider", name: "Pickup Rider", role: "RIDER", office: "BUE", pin: "1234", isActive: true });
   }
   database.bookings ||= [];
+  database.customerAccounts ||= [];
   database.pickupTasks ||= [];
   database.packages ||= [];
   database.vehicles ||= [];

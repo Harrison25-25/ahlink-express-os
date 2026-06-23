@@ -183,6 +183,66 @@ test("pickup requests can be assigned, dispatched, collected and received at off
   });
 });
 
+test("customer accounts support account billing and public tracking", async () => {
+  await withServer(async (baseUrl) => {
+    const login = await jsonRequest(`${baseUrl}/api/auth/login`, { method: "POST", body: { userId: "admin", pin: "1234" } });
+    const account = await jsonRequest(`${baseUrl}/api/customers`, {
+      method: "POST",
+      headers: { "X-AHLink-Session": login.body.token },
+      body: { accountCode: "BIZ-001", accountName: "Buea Market Traders", contactName: "Mrs Trader", phone: "677400001", accountType: "BUSINESS", creditLimitCfa: 50000, status: "ACTIVE" }
+    });
+    assert.equal(account.response.status, 200);
+
+    const booking = await jsonRequest(`${baseUrl}/api/bookings`, {
+      method: "POST",
+      headers: { "X-AHLink-Session": login.body.token },
+      body: {
+        senderName: "Buea Market Traders",
+        senderPhone: "677400001",
+        recipientName: "Account Receiver",
+        recipientPhone: "677400002",
+        origin: "BUE",
+        destination: "DLA",
+        receivingMethod: "DROPOFF",
+        service: "STANDARD",
+        itemDescription: "Account billed parcel",
+        approximateWeightKg: 1,
+        declaredValueCfa: 0,
+        customerAccountId: account.body.account.accountId
+      }
+    });
+    const accepted = await jsonRequest(`${baseUrl}/api/bookings/${booking.body.booking.bookingId}/accept`, {
+      method: "POST",
+      headers: { "X-AHLink-Session": login.body.token },
+      body: {
+        verifiedWeightKg: 1,
+        lengthCm: 20,
+        widthCm: 10,
+        heightCm: 5,
+        condition: "GOOD",
+        paymentArrangement: "ACCOUNT",
+        customerAccountId: account.body.account.accountId,
+        acceptedBy: "Admin User"
+      }
+    });
+    assert.equal(accepted.response.status, 201);
+    assert.equal(accepted.body.parcelPackage.customerAccountId, account.body.account.accountId);
+    assert.equal(accepted.body.parcelPackage.paymentStatus, "PENDING");
+
+    const publicTracking = await jsonRequest(`${baseUrl}/api/public/tracking/${accepted.body.parcelPackage.trackingNumber}`);
+    assert.equal(publicTracking.response.status, 200);
+    assert.equal(publicTracking.body.package.trackingNumber, accepted.body.parcelPackage.trackingNumber);
+    assert.equal(publicTracking.body.package.paymentStatus, undefined);
+
+    const payment = await jsonRequest(`${baseUrl}/api/customers/${account.body.account.accountId}/payments`, {
+      method: "POST",
+      headers: { "X-AHLink-Session": login.body.token },
+      body: { amountCfa: 2000, mode: "MOMO", note: "Part account payment" }
+    });
+    assert.equal(payment.response.status, 201);
+  });
+});
+
 test("the operations interface is served", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(baseUrl);

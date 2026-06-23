@@ -73,8 +73,11 @@ export const PICKUP_STATUSES = Object.freeze({
   REQUESTED: "REQUESTED",
   ASSIGNED: "ASSIGNED",
   DISPATCHED: "DISPATCHED",
+  ON_THE_WAY: "ON_THE_WAY",
   PICKED_UP: "PICKED_UP",
   ARRIVED_AT_OFFICE: "ARRIVED_AT_OFFICE",
+  FAILED: "FAILED",
+  RESCHEDULED: "RESCHEDULED",
   CANCELLED: "CANCELLED"
 });
 
@@ -145,7 +148,8 @@ export function createBooking(input, now = new Date()) {
     declaredValueCfa: nonNegativeNumber(input.declaredValueCfa, "Declared value"),
     estimatedPriceCfa: estimatePrice(origin, destination, approximateWeightKg, service),
     status: receivingMethod === "PICKUP" ? BOOKING_STATUSES.PICKUP_REQUESTED : BOOKING_STATUSES.AWAITING_DROPOFF,
-    acceptedPackageId: null
+    acceptedPackageId: null,
+    customerAccountId: String(input.customerAccountId || "").trim()
   };
 }
 
@@ -187,6 +191,8 @@ export function acceptPhysicalPackage(booking, input, sequence, now = new Date()
     declaredValueCfa: booking.declaredValueCfa,
     finalPriceCfa,
     paymentArrangement,
+    customerAccountId: paymentArrangement === "ACCOUNT" ? String(input.customerAccountId || booking.customerAccountId || "").trim() : "",
+    accountName: String(input.accountName || "").trim(),
     paymentStatus: paymentArrangement === "SENDER_PAID" ? "PAID" : "PENDING",
     paidCfa: paymentArrangement === "SENDER_PAID" ? finalPriceCfa : 0,
     condition,
@@ -266,14 +272,41 @@ export function dispatchPickupTask(task, input = {}, now = new Date()) {
   };
 }
 
+export function markPickupOnTheWay(task, input = {}, now = new Date()) {
+  if (![PICKUP_STATUSES.ASSIGNED, PICKUP_STATUSES.DISPATCHED, PICKUP_STATUSES.RESCHEDULED].includes(task.status)) {
+    throw new Error("Only assigned, dispatched or rescheduled pickups can be marked on the way.");
+  }
+  return {
+    ...task,
+    status: PICKUP_STATUSES.ON_THE_WAY,
+    onTheWayAt: now.toISOString(),
+    riderLocationNote: String(input.riderLocationNote || input.note || "").trim(),
+    updatedAt: now.toISOString()
+  };
+}
+
 export function confirmPickupCollected(task, input = {}, now = new Date()) {
-  if (task.status !== PICKUP_STATUSES.DISPATCHED) throw new Error("Only dispatched pickups can be confirmed collected.");
+  if (![PICKUP_STATUSES.DISPATCHED, PICKUP_STATUSES.ON_THE_WAY].includes(task.status)) throw new Error("Only dispatched/on-the-way pickups can be confirmed collected.");
   return {
     ...task,
     status: PICKUP_STATUSES.PICKED_UP,
     pickedUpAt: now.toISOString(),
     pickupProofNote: requireText(input.pickupProofNote || input.note, "Pickup proof note", 300),
     senderNameConfirmed: String(input.senderNameConfirmed || task.senderName).trim(),
+    updatedAt: now.toISOString()
+  };
+}
+
+export function failOrReschedulePickup(task, input = {}, now = new Date()) {
+  if ([PICKUP_STATUSES.ARRIVED_AT_OFFICE, PICKUP_STATUSES.CANCELLED].includes(task.status)) {
+    throw new Error("This pickup can no longer be failed or rescheduled.");
+  }
+  const outcome = input.outcome === "RESCHEDULED" ? PICKUP_STATUSES.RESCHEDULED : PICKUP_STATUSES.FAILED;
+  return {
+    ...task,
+    status: outcome,
+    failureReason: requireText(input.reason || input.note, "Pickup note", 300),
+    rescheduledFor: outcome === PICKUP_STATUSES.RESCHEDULED ? String(input.rescheduledFor || "").trim() : "",
     updatedAt: now.toISOString()
   };
 }
@@ -286,6 +319,42 @@ export function confirmPickupArrivedAtOffice(task, input = {}, now = new Date())
     arrivedAtOfficeAt: now.toISOString(),
     officeArrivalNote: String(input.officeArrivalNote || input.note || "").trim(),
     updatedAt: now.toISOString()
+  };
+}
+
+export function createOrUpdateCustomerAccount(existingAccount, input, now = new Date()) {
+  const accountType = input.accountType === "BUSINESS" ? "BUSINESS" : "INDIVIDUAL";
+  const accountId = existingAccount?.accountId || crypto.randomUUID();
+  const creditLimitCfa = nonNegativeNumber(input.creditLimitCfa ?? existingAccount?.creditLimitCfa, "Credit limit");
+  return {
+    ...(existingAccount || {}),
+    accountId,
+    accountCode: requireText(input.accountCode || existingAccount?.accountCode || `ACC-${randomDigits(5)}`, "Account code", 40).toUpperCase(),
+    accountName: requireText(input.accountName || existingAccount?.accountName, "Account name", 120),
+    contactName: requireText(input.contactName || existingAccount?.contactName || input.accountName, "Contact name", 120),
+    phone: requireText(cleanPhone(input.phone || existingAccount?.phone), "Account phone", 20),
+    accountType,
+    creditLimitCfa,
+    status: input.status === "BLOCKED" ? "BLOCKED" : "ACTIVE",
+    note: String(input.note || existingAccount?.note || "").trim(),
+    createdAt: existingAccount?.createdAt || now.toISOString(),
+    updatedAt: now.toISOString()
+  };
+}
+
+export function recordAccountPayment(account, input = {}, now = new Date()) {
+  const amountCfa = nonNegativeNumber(input.amountCfa, "Account payment amount");
+  if (amountCfa <= 0) throw new Error("Account payment amount must be greater than zero.");
+  return {
+    paymentId: crypto.randomUUID(),
+    accountId: account.accountId,
+    accountCode: account.accountCode,
+    accountName: account.accountName,
+    amountCfa,
+    mode: ["CASH", "MOMO", "BANK"].includes(input.mode) ? input.mode : "CASH",
+    receivedBy: requireText(input.receivedBy, "Receiving cashier", 100),
+    note: String(input.note || "").trim(),
+    paidAt: now.toISOString()
   };
 }
 
@@ -677,10 +746,30 @@ export function createFinanceSummary(database, dateText) {
   const outstandingByAccount = outstandingPackages
     .filter((item) => item.paymentArrangement === "ACCOUNT")
     .reduce((all, item) => {
-      const name = item.senderName || "Account customer";
+      const account = (database.customerAccounts || []).find((row) => row.accountId === item.customerAccountId);
+      const name = account?.accountName || item.accountName || item.senderName || "Account customer";
       all[name] = (all[name] || 0) + Math.max(0, Number(item.finalPriceCfa || 0) - Number(item.paidCfa || 0));
       return all;
     }, {});
+  const accountPayments = (database.payments || []).filter((payment) => payment.accountId && String(payment.paidAt || "").slice(0, 10) === date);
+  const accountBalances = (database.customerAccounts || []).map((account) => {
+    const charges = outstandingPackages
+      .filter((item) => item.paymentArrangement === "ACCOUNT" && item.customerAccountId === account.accountId)
+      .reduce((sum, item) => sum + Math.max(0, Number(item.finalPriceCfa || 0) - Number(item.paidCfa || 0)), 0);
+    const paymentsForAccount = accountPayments
+      .filter((payment) => payment.accountId === account.accountId)
+      .reduce((sum, payment) => sum + Number(payment.amountCfa || 0), 0);
+    return {
+      accountId: account.accountId,
+      accountCode: account.accountCode,
+      accountName: account.accountName,
+      status: account.status,
+      creditLimitCfa: Number(account.creditLimitCfa || 0),
+      outstandingCfa: charges,
+      paymentsTodayCfa: paymentsForAccount,
+      availableCreditCfa: Number(account.creditLimitCfa || 0) - charges
+    };
+  });
   const outstandingByRoute = outstandingPackages.reduce((all, item) => {
     const route = `${item.origin}-${item.destination}`;
     all[route] = (all[route] || 0) + Math.max(0, Number(item.finalPriceCfa || 0) - Number(item.paidCfa || 0));
@@ -695,6 +784,7 @@ export function createFinanceSummary(database, dateText) {
     byMode,
     byPayerType,
     outstandingByAccount,
+    accountBalances,
     outstandingByRoute,
     openShifts: (database.cashierShifts || []).filter((shift) => shift.status === "OPEN"),
     closings: (database.cashClosings || []).filter((closing) => String(closing.closedAt || "").slice(0, 10) === date)

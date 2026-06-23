@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Track package · AHLink Express</title>
+  <style>
+    :root { --navy:#082b63; --orange:#ff641e; --muted:#667085; --line:#e5ebf3; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Inter,Arial,sans-serif; background:#f3f6fb; color:#172033; }
+    main { width:min(880px, calc(100vw - 28px)); margin:42px auto; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:22px; padding:28px; box-shadow:0 16px 40px rgba(10,31,68,.08); }
+    .brand { color:var(--orange); font-weight:900; letter-spacing:.12em; text-transform:uppercase; font-size:13px; }
+    h1 { margin:8px 0 10px; color:var(--navy); font-size:34px; }
+    p { color:var(--muted); line-height:1.55; }
+    form { display:flex; gap:10px; margin:24px 0; }
+    input { flex:1; border:1px solid var(--line); border-radius:12px; padding:14px 15px; font-size:16px; }
+    button { border:0; border-radius:12px; padding:14px 18px; font-weight:800; color:#fff; background:var(--orange); cursor:pointer; }
+    .result { margin-top:18px; }
+    .summary { border-left:5px solid var(--orange); background:#fff8f4; padding:16px; border-radius:14px; }
+    .badge { display:inline-block; border-radius:999px; padding:7px 10px; background:#e8f1ff; color:var(--navy); font-weight:800; font-size:12px; }
+    .timeline { list-style:none; padding:0; margin:24px 0 0; }
+    .timeline li { border-left:2px solid #d9e3f2; padding:0 0 20px 20px; position:relative; }
+    .timeline li:before { content:""; position:absolute; left:-7px; top:0; width:12px; height:12px; border-radius:50%; background:var(--orange); }
+    .timeline strong, .timeline small { display:block; }
+    .timeline small { color:var(--muted); margin-top:4px; }
+    .notice { padding:13px 15px; border-radius:12px; background:#fff2e9; color:#8f3c13; }
+    a { color:var(--navy); font-weight:800; }
+    @media(max-width:640px){ form{flex-direction:column;} h1{font-size:28px;} }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <div class="brand">AHLink Express</div>
+      <h1>Track your package</h1>
+      <p>Enter your AHLink Express tracking number. For privacy, this public page shows package movement only, not staff finance or internal notes.</p>
+      <form id="track-form">
+        <input name="trackingNumber" placeholder="Example: AHE-BUE-DLA-260623-00001" autofocus required>
+        <button>Track</button>
+      </form>
+      <div id="result" class="result"></div>
+      <p><a href="/">Staff portal</a></p>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector("#track-form");
+    const result = document.querySelector("#result");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      result.innerHTML = "<p>Checking tracking...</p>";
+      const trackingNumber = form.trackingNumber.value.trim();
+      try {
+        const response = await fetch(`/api/public/tracking/${encodeURIComponent(trackingNumber)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Tracking not found.");
+        const item = data.package;
+        result.innerHTML = `<div class="summary"><strong>${escapeHtml(item.trackingNumber)}</strong><p>${escapeHtml(item.origin)} → ${escapeHtml(item.destination)} · Receiver: ${escapeHtml(item.recipientName)}</p><span class="badge">${label(item.status)}</span>${item.pickupReady ? "<p>Your package is ready at destination. Please come with your pickup PIN and ID.</p>" : ""}</div><ul class="timeline">${data.events.map((row) => `<li><strong>${label(row.type)}</strong><small>${formatDate(row.createdAt)} · ${escapeHtml(row.office)}</small><small>${escapeHtml(row.note)}</small></li>`).join("")}</ul>`;
+      } catch (error) {
+        result.innerHTML = `<div class="notice">${escapeHtml(error.message)}</div>`;
+      }
+    });
+    function label(value) { return String(value || "").toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+    function formatDate(value) { return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
+    function escapeHtml(value) { const span = document.createElement("span"); span.textContent = String(value ?? ""); return span.innerHTML; }
+  </script>
+</body>
+</html>
