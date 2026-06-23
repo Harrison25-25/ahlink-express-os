@@ -52,7 +52,16 @@
     <section id="dashboard" class="view active">
       <div class="welcome">
         <div><p class="eyebrow">CONTROL CENTRE</p><h2>Know where every package is.</h2><p>Bookings, physical custody and storage are connected through one verified timeline.</p></div>
-        <button class="primary" data-go="bookings">+ Register booking</button>
+        <div class="welcome-actions">
+          <button class="primary" data-go="bookings">+ Register booking</button>
+          <button class="secondary" data-go="admin">Admin settings</button>
+        </div>
+      </div>
+      <div class="quick-actions">
+        <button class="quick-action" data-go="pickup"><span>Pickup dispatch</span><small>Assign riders and receive pickups at office</small></button>
+        <button class="quick-action" data-go="notifications"><span>Print / QR labels</span><small>Package labels, receipts and manifests</small></button>
+        <button class="quick-action" data-go="finance"><span>Cashier closing</span><small>Shift sessions, payment totals and reports</small></button>
+        <button class="quick-action" data-go="admin"><span>Staff & offices</span><small>Users, roles, PIN resets, routes and settings</small></button>
       </div>
       <div class="metric-grid">
         <article class="metric"><span>Awaiting physical parcel</span><strong id="metric-awaiting">0</strong><small>AHLink does not possess these yet</small></article>
