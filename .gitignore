@@ -1,0 +1,5 @@
+node_modules/
+.npm-cache/
+data/db.json
+data/*.tmp
+neon-env.cmd

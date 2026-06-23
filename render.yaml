@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ahlink-express-os
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DATABASE_URL
+        sync: false

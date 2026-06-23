@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#082b63">
+  <title>AHLink Express OS</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/express-ops.css">
+</head>
+<body>
+  <div id="login-screen" class="login-screen">
+    <form id="login-form" class="login-card">
+      <div class="brand-mark" aria-hidden="true">A</div>
+      <h1>AHLink Express OS</h1>
+      <p>Staff access with role and office session.</p>
+      <label>User ID<input name="userId" value="admin" required></label>
+      <label>PIN<input name="pin" type="password" value="1234" required></label>
+      <button class="primary full-button">Login</button>
+      <small>Demo users: admin, origin, destination, cashier, manifest, auditor. PIN: 1234.</small>
+    </form>
+  </div>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">A</div>
+      <div><strong>AHLink</strong><span>Express OS</span></div>
+    </div>
+    <nav>
+      <button class="nav-item active" data-view="dashboard">Overview</button>
+      <button class="nav-item" data-view="bookings">Bookings</button>
+      <button class="nav-item" data-view="pickup">Pickup dispatch</button>
+      <button class="nav-item" data-view="acceptance">Accept package</button>
+      <button class="nav-item" data-view="inventory">Package inventory</button>
+      <button class="nav-item" data-view="trips">Trips & manifests</button>
+      <button class="nav-item" data-view="destination">Destination</button>
+      <button class="nav-item" data-view="exceptions">Exceptions</button>
+      <button class="nav-item" data-view="finance">Finance</button>
+      <button class="nav-item" data-view="notifications">Notifications & print</button>
+      <button class="nav-item" data-view="admin">Admin settings</button>
+      <button class="nav-item" data-view="audit">Audit trail</button>
+      <button class="nav-item" data-view="tracking">Track package</button>
+    </nav>
+    <div class="office-chip"><span></span> <span id="office-chip-text">Pilot environment</span></div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div><p class="eyebrow">AHLink Express</p><h1 id="page-title">Operations overview</h1></div>
+      <div class="topbar-tools"><label>Office view<select id="office-filter"><option value="ALL">All offices</option><option value="BUE">Buea</option><option value="LIM">Limbe</option><option value="DLA">Douala</option></select></label><div class="operator"><span id="operator-initials">--</span><div><strong id="operator-name">Not logged in</strong><small id="operator-role">Staff session</small></div></div><button id="logout-button" class="secondary">Logout</button></div>
+    </header>
+
+    <section id="dashboard" class="view active">
+      <div class="welcome">
+        <div><p class="eyebrow">CONTROL CENTRE</p><h2>Know where every package is.</h2><p>Bookings, physical custody and storage are connected through one verified timeline.</p></div>
+        <button class="primary" data-go="bookings">+ Register booking</button>
+      </div>
+      <div class="metric-grid">
+        <article class="metric"><span>Awaiting physical parcel</span><strong id="metric-awaiting">0</strong><small>AHLink does not possess these yet</small></article>
+        <article class="metric"><span>Accepted today</span><strong id="metric-accepted">0</strong><small>Custody confirmed</small></article>
+        <article class="metric"><span>Stored at origin</span><strong id="metric-stored">0</strong><small>Exact shelf recorded</small></article>
+        <article class="metric"><span>Active trips</span><strong id="metric-trips">0</strong><small>Planned, loading or departed</small></article>
+      </div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h3>Latest packages</h3></div><button class="secondary" data-go="inventory">View inventory</button></div><div id="recent-packages" class="table-wrap"></div></div>
+    </section>
+
+    <section id="bookings" class="view">
+      <div class="split-layout">
+        <form id="booking-form" class="panel form-panel">
+          <p class="eyebrow">STEP 1</p><h2>Register parcel intention</h2>
+          <div class="notice blue">This creates a booking only. AHLink custody begins after an employee physically verifies and accepts the package.</div>
+          <div class="form-grid">
+            <label>Sender name<input name="senderName" required></label>
+            <label>Sender phone<input name="senderPhone" type="tel" required></label>
+            <label>Recipient name<input name="recipientName" required></label>
+            <label>Recipient phone<input name="recipientPhone" type="tel" required></label>
+            <label>Origin office<select name="origin" required></select></label>
+            <label>Destination office<select name="destination" required></select></label>
+            <label>How will AHLink receive it?<select name="receivingMethod"><option value="DROPOFF">Customer drops at office</option><option value="PICKUP">Request pickup</option></select></label>
+            <label>Service<select name="service"><option value="STANDARD">Standard</option><option value="EXPRESS">Express</option></select></label>
+            <label class="full pickup-field hidden">Pickup address<input name="pickupAddress"></label>
+            <label class="full">Item description<textarea name="itemDescription" required placeholder="Example: sealed box containing clothing"></textarea></label>
+            <label>Approximate weight (kg)<input name="approximateWeightKg" type="number" min="0.1" max="100" step="0.1" value="1" required></label>
+            <label>Declared value (FCFA)<input name="declaredValueCfa" type="number" min="0" step="100" value="0"></label>
+          </div>
+          <button class="primary full-button" type="submit">Create booking</button>
+          <div id="booking-result"></div>
+        </form>
+        <aside class="panel side-explainer"><p class="eyebrow">WHAT HAPPENS NEXT?</p><ol><li><span>1</span><div><strong>Booking created</strong><small>The system gives the customer a booking code and estimated price.</small></div></li><li><span>2</span><div><strong>Package presented</strong><small>The customer drops it off or an assigned agent collects it.</small></div></li><li><span>3</span><div><strong>Physical verification</strong><small>An employee weighs, measures and inspects the real package.</small></div></li><li><span>4</span><div><strong>Custody begins</strong><small>A tracking label is activated after acceptance.</small></div></li></ol></aside>
+      </div>
+    </section>
+
+    <section id="pickup" class="view">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">FIRST-MILE CONTROL</p><h2>Pickup dispatch and rider handover</h2></div></div>
+        <div class="notice blue">Pickup bookings are not yet in AHLink custody. Dispatch a rider, confirm collection from sender, then receive the parcel at the origin office before physical acceptance.</div>
+        <div id="pickup-workbench"></div>
+      </div>
+    </section>
+
+    <section id="acceptance" class="view">
+      <div class="panel form-panel narrow">
+        <p class="eyebrow">STEP 2</p><h2>Accept a physical package</h2>
+        <div class="notice orange">Complete this only while the physical package and customer are present.</div>
+        <form id="acceptance-form">
+          <div class="form-grid">
+            <label class="full">Awaiting booking<select name="bookingId" id="acceptance-booking" required></select></label>
+            <label>Verified weight (kg)<input name="verifiedWeightKg" type="number" min="0.1" max="100" step="0.1" required></label>
+            <label>Condition<select name="condition"><option value="GOOD">Good</option><option value="MINOR_DAMAGE">Minor existing damage</option><option value="REQUIRES_REPACKAGING">Requires repackaging</option></select></label>
+            <label>Length (cm)<input name="lengthCm" type="number" min="1" max="300" required></label>
+            <label>Width (cm)<input name="widthCm" type="number" min="1" max="300" required></label>
+            <label>Height (cm)<input name="heightCm" type="number" min="1" max="300" required></label>
+            <label>Seal number<input name="sealNumber" placeholder="Optional"></label>
+            <label>Payment arrangement<select name="paymentArrangement"><option value="SENDER_PAID">Sender paid</option><option value="RECIPIENT_PAYS">Recipient pays</option><option value="ACCOUNT">Business account</option></select></label>
+            <label>Accepted by<input name="acceptedBy" required></label>
+          </div>
+          <button class="primary full-button" type="submit">Verify and accept into custody</button>
+        </form>
+        <div id="acceptance-result"></div>
+      </div>
+    </section>
+
+    <section id="inventory" class="view"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">PHYSICAL INVENTORY</p><h2>Packages</h2></div></div><div id="inventory-table" class="table-wrap"></div></div></section>
+
+    <section id="trips" class="view">
+      <div class="split-layout">
+        <div class="panel form-panel">
+          <p class="eyebrow">TRIP CONTROL</p><h2>Vehicles, manifests and departure</h2>
+          <div class="notice blue">A package must be physically accepted and stored at the origin office before it can enter a trip manifest.</div>
+          <div class="two-panel-grid">
+            <form id="vehicle-form" class="sub-panel">
+              <h3>Register vehicle</h3>
+              <label>Registration number<input name="registrationNumber" required placeholder="LT-123-AA"></label>
+              <label>Vehicle type<input name="vehicleType" value="Van" required></label>
+              <label>Driver name<input name="driverName"></label>
+              <label>Driver phone<input name="driverPhone" type="tel"></label>
+              <label>Package capacity<input name="capacityPackages" type="number" min="0" value="0"></label>
+              <label>Weight capacity kg<input name="capacityKg" type="number" min="0" step="0.1" value="0"></label>
+              <button class="primary full-button">Save vehicle</button>
+            </form>
+            <form id="trip-form" class="sub-panel">
+              <h3>Create trip</h3>
+              <label>Trip date<input name="tripDate" type="date" required></label>
+              <label>Route name<input name="routeName" placeholder="Buea to Douala morning line"></label>
+              <label>Origin office<select name="origin" required></select></label>
+              <label>Destination office<select name="destination" required></select></label>
+              <label>Vehicle<select name="vehicleId" id="trip-vehicle" required></select></label>
+              <label>Scheduled departure<input name="scheduledDeparture" type="datetime-local"></label>
+              <button class="primary full-button">Create trip</button>
+            </form>
+          </div>
+        </div>
+        <aside class="panel side-explainer"><p class="eyebrow">DEPARTURE RULE</p><ol><li><span>1</span><div><strong>Manifest only stored packages</strong><small>Bookings alone never enter a vehicle.</small></div></li><li><span>2</span><div><strong>Load every item</strong><small>Departure is blocked until each manifest line is loaded.</small></div></li><li><span>3</span><div><strong>Depart trip</strong><small>Loaded packages move from origin storage into transit.</small></div></li></ol></aside>
+      </div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ACTIVE OPERATIONS</p><h2>Trip manifests</h2></div></div><div id="trip-workbench"></div></div>
+    </section>
+
+    <section id="destination" class="view">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">DESTINATION RECEPTION</p><h2>Receive departed trips</h2></div></div><div id="destination-reception"></div></div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">DESTINATION STORAGE & COLLECTION</p><h2>Store and release packages</h2></div></div><div id="destination-packages"></div></div>
+    </section>
+
+    <section id="exceptions" class="view">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">EXCEPTION CONTROL</p><h2>Missing, damaged, wrong destination, refused collection and return-to-origin</h2></div></div><div id="exception-workbench"></div></div>
+    </section>
+
+    <section id="finance" class="view">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">FINANCE</p><h2>Payments and daily cashier report</h2></div></div><div id="finance-summary"></div><div id="finance-workbench"></div></div>
+    </section>
+
+    <section id="notifications" class="view">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">CUSTOMER COMMUNICATION</p><h2>Notification templates, labels, receipts and manifests</h2></div></div><div id="notification-workbench"></div></div>
+    </section>
+
+    <section id="admin" class="view">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ADMIN SETTINGS</p><h2>Staff, offices, routes and basic controls</h2></div></div><div id="admin-workbench"></div></div>
+    </section>
+
+    <section id="audit" class="view">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ACCOUNTABILITY</p><h2>Audit trail</h2></div></div><div id="audit-workbench"></div></div>
+    </section>
+
+    <section id="tracking" class="view">
+      <div class="panel tracking-panel"><p class="eyebrow">CUSTODY SEARCH / BARCODE SCAN</p><h2>Track a package</h2><form id="tracking-form" class="search-row"><input name="trackingNumber" placeholder="Scan or type tracking number" autofocus required><button class="primary">Track</button></form><div id="tracking-result"></div></div>
+    </section>
+  </main>
+  <div id="toast" role="status"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

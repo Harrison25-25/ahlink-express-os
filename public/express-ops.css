@@ -1,0 +1,176 @@
+.two-panel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.sub-panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  background: #fbfdff;
+}
+
+.sub-panel h3 {
+  margin: 0 0 12px;
+}
+
+.sub-panel label {
+  display: block;
+  margin: 10px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #394357;
+}
+
+.sub-panel input,
+.sub-panel select,
+.manifest-add-form select,
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: #fff;
+}
+
+.login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 26, 61, .94);
+}
+
+.login-card {
+  width: min(420px, calc(100vw - 32px));
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 22px 80px rgba(0,0,0,.25);
+}
+
+.login-card h1 { margin: 14px 0 4px; }
+.login-card p, .login-card small { color: var(--muted); }
+.login-card label { display:block; margin: 14px 0; font-weight: 750; color:#394357; }
+.login-card input { display:block; width:100%; margin-top:7px; border:1px solid var(--line); border-radius:10px; padding:11px; }
+.topbar-tools { display:flex; align-items:center; gap:14px; }
+.topbar-tools label { font-size:12px; color:var(--muted); font-weight:800; }
+.topbar-tools select { display:block; margin-top:4px; border:1px solid var(--line); border-radius:9px; padding:7px; background:#fff; }
+textarea { min-width: 260px; max-width: 420px; resize: vertical; }
+
+.manifest-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 14px 0;
+  background: #fff;
+}
+
+.manifest-card h3 {
+  margin: 0 0 4px;
+}
+
+.manifest-meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.manifest-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.scan-row,
+.inline-form,
+.finance-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: end;
+  margin: 10px 0;
+}
+
+.scan-row input,
+.scan-row select,
+.inline-form input,
+.inline-form select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fff;
+}
+
+.scan-row input {
+  min-width: 260px;
+}
+
+.pill-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 18px;
+}
+
+.pill-list span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #f8fbff;
+}
+
+.manifest-actions button,
+td button,
+.receive-trip-form button,
+.destination-store-form button,
+.collect-form button,
+.exception-form button,
+.payment-form button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--navy);
+  color: #fff;
+  cursor: pointer;
+}
+
+.receive-trip-form label,
+.destination-store-form,
+.collect-form,
+.exception-form,
+.payment-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.receive-trip-form input,
+.destination-store-form input,
+.collect-form input,
+.exception-form input,
+.exception-form select,
+.payment-form input,
+.payment-form select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: #fff;
+}
+
+.manifest-actions button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .two-panel-grid {
+    grid-template-columns: 1fr;
+  }
+}
